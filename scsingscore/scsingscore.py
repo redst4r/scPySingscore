@@ -43,26 +43,41 @@ def add_noise(df, n, noise_low, noise_high):
 def get_conn_dist(adata, celli, nn):
     """
     gets connectivity/distance for a single cell in the adata
+    returns a dataframe, each row a neighbour of celli, with distance connectivity etc
     """
     # q is an adata
     # celli is cell i in q
     # nn is the number of neighbors
     jdx = numpy.where(adata.obsp['distances'][celli].todense() > 0)[1]  # TODO the .todense() > 0 might be unneeded. just use .find()
-    y = [adata.obsp['distances'][celli].todense().tolist()[0][ i ] for i in jdx]
-    x = [adata.obsp['connectivities'][celli].todense().tolist()[0][ i ] for i in jdx]
-    df = pandas.DataFrame({'idx':jdx, 'conn':x, 'dist':y})
+    y = [adata.obsp['distances'][celli].todense().tolist()[0][ i ] for i in jdx]  #TODO this does the .toDense() call i times!
+    x = [adata.obsp['connectivities'][celli].todense().tolist()[0][ i ] for i in jdx] # see above
+    df = pandas.DataFrame({'idx': jdx, 'conn': x, 'dist': y})
     sumconn = sum(df['conn'])
     df['prob'] = [x/sumconn for x in df['conn']]
     return(df)
 
 
 def to_dense_transpose_list(gene_counts):
-    gene_mat = gene_counts.todense().transpose().sum(axis=1)
+    """
+    gene_counts: cell x gene sparse matrix
+
+    returns: summed gene vector; the vectors nonzero indices
+    """
+    # sum each gene across all cells
+    gene_mat = gene_counts.todense().transpose().sum(axis=1)  # Warning this returns a `matrix` not a np.array!!!!
+    # suggestion (sum before dense!):
+    # gene_mat2 = gene_counts.sum(axis=0).A.flatten()
+    # assert np.all(gene_mat == gene_mat2)
+
     gdx = numpy.argwhere(gene_mat > 0)
-    return( (gene_mat,  [x[0] for x in gdx] ) )
+    return ((gene_mat, [x[0] for x in gdx]))  #TODO why this double tuple (())
 
 
-def _refactor1(adata, celli, num_neighbors, samp_neighbors ):
+def _refactor1(adata, celli, num_neighbors, samp_neighbors):
+    """
+    subsample neighbours, get their expression matrix
+    """
+
     # first we get the neighborhood cells
     cdf = get_conn_dist(adata, celli, num_neighbors)
     # ZED out the cells that don't have proper annotation.
@@ -83,6 +98,7 @@ def _refactor1(adata, celli, num_neighbors, samp_neighbors ):
 
     return gene_counts
 
+
 def sc_score_one(
     adata,  # anndata containing single cell rna-seq data
     celli,   # cell index, integer
@@ -102,13 +118,13 @@ def sc_score_one(
 
     # TODO probably would do that outside of the package, makes changes to adata!
     if compute_neighbors == True and num_neighbors > 0:
-        sc.pp.neighbors(adata, n_neighbors = num_neighbors)
+        sc.pp.neighbors(adata, n_neighbors=num_neighbors)
 
     if num_neighbors > 0:
-        gene_counts = _refactor1(adata, celli, num_neighbors, samp_neighbors )
+        gene_counts = _refactor1(adata, celli, num_neighbors, samp_neighbors)
     else:
         # one cell
-        gene_counts = adata.X[celli,:]
+        gene_counts = adata.X[celli, :]
 
     # slow part -- yes fixed.
     (gene_mat, gdx) = to_dense_transpose_list(gene_counts)
@@ -164,6 +180,9 @@ def sc_score_list(
 
     # slow part -- yes fixed.
     (gene_mat, gdx) = to_dense_transpose_list(gene_counts)
+    """
+    gene_counts: cell x gene sparse matrix
+    """
 
     # then we subset it to only the genes with counts
     df = pandas.DataFrame(gene_mat, index=adata.var.index)
