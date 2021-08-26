@@ -24,7 +24,7 @@ def read_gene_sets(filepath):
     txt = open(filepath).read().split('\n')
     gd = dict()
     for line in txt:
-        bits = line.split('\t')
+        bits = line.split('\t')  # TODO: naming the returns
         if len(bits) >= 3:
             gd[bits[0]] = bits[2:]
     return(gd)
@@ -40,13 +40,16 @@ def add_noise(df, n, noise_low, noise_high):
     return(randmat)
 
 
-def get_conn_dist(q, celli, nn):
+def get_conn_dist(adata, celli, nn):
+    """
+    gets connectivity/distance for a single cell in the adata
+    """
     # q is an adata
     # celli is cell i in q
     # nn is the number of neighbors
-    jdx = numpy.where(q.obsp['distances'][celli].todense() > 0)[1]
-    y = [q.obsp['distances'][celli].todense().tolist()[0][ i ] for i in jdx]
-    x = [q.obsp['connectivities'][celli].todense().tolist()[0][ i ] for i in jdx]
+    jdx = numpy.where(adata.obsp['distances'][celli].todense() > 0)[1]  # TODO the .todense() > 0 might be unneeded. just use .find()
+    y = [adata.obsp['distances'][celli].todense().tolist()[0][ i ] for i in jdx]
+    x = [adata.obsp['connectivities'][celli].todense().tolist()[0][ i ] for i in jdx]
     df = pandas.DataFrame({'idx':jdx, 'conn':x, 'dist':y})
     sumconn = sum(df['conn'])
     df['prob'] = [x/sumconn for x in df['conn']]
@@ -59,6 +62,27 @@ def to_dense_transpose_list(gene_counts):
     return( (gene_mat,  [x[0] for x in gdx] ) )
 
 
+def _refactor1(adata, celli, num_neighbors, samp_neighbors ):
+    # first we get the neighborhood cells
+    cdf = get_conn_dist(adata, celli, num_neighbors)
+    # ZED out the cells that don't have proper annotation.
+    # REDUCE sample size to number cells possible after filter
+    # but give user warning.
+    # then we sample a set of cells from them
+    if len(cdf) == 0:
+        print("warning: cell " + str(celli) + " has " + str(len(cdf)) + " neighbors")
+        print("    returning zed")
+        return(0.0)
+    if len(cdf) < samp_neighbors:
+        print("warning: cell " + str(celli) + " has " + str(len(cdf)) + " neighbors")
+        print("    setting to sample " + str(len(cdf)) + " neighbors")
+        samp_neighbors = len(cdf)
+    csamp = numpy.random.choice(a=cdf['idx'], size=samp_neighbors, replace=False, p=cdf['prob'])
+    # gene counts for scoring needs to have genes on rows.
+    gene_counts = adata.X[csamp,:]
+
+    return gene_counts
+
 def sc_score_one(
     adata,  # anndata containing single cell rna-seq data
     celli,   # cell index, integer
@@ -70,33 +94,18 @@ def sc_score_one(
     compute_neighbors=False):  # whether to compute the neighborhood.  very slow.
 
     # mode 'average' averaged the noise trials
-    # mode 'nonoise' returns the non-noised score 
-    
+    # mode 'nonoise' returns the non-noised score
+
     if num_neighbors == 0 and samp_neighbors > 0:
         print('fix parameters')
         return(False)
-    
+
+    # TODO probably would do that outside of the package, makes changes to adata!
     if compute_neighbors == True and num_neighbors > 0:
         sc.pp.neighbors(adata, n_neighbors = num_neighbors)
 
     if num_neighbors > 0:
-        # first we get the neighborhood cells
-        cdf = get_conn_dist(adata, celli, num_neighbors)
-        # ZED out the cells that don't have proper annotation.
-        # REDUCE sample size to number cells possible after filter
-        # but give user warning.
-        # then we sample a set of cells from them
-        if len(cdf) == 0:
-            print("warning: cell " + str(celli) + " has " + str(len(cdf)) + " neighbors")
-            print("    returning zed")
-            return(0.0)
-        if len(cdf) < samp_neighbors:
-            print("warning: cell " + str(celli) + " has " + str(len(cdf)) + " neighbors")
-            print("    setting to sample " + str(len(cdf)) + " neighbors")
-            samp_neighbors = len(cdf)
-        csamp = numpy.random.choice(a=cdf['idx'], size=samp_neighbors, replace=False, p=cdf['prob'])
-        # gene counts for scoring needs to have genes on rows.
-        gene_counts = adata.X[csamp,:]
+        gene_counts = _refactor1(adata, celli, num_neighbors, samp_neighbors )
     else:
         # one cell
         gene_counts = adata.X[celli,:]
@@ -118,7 +127,7 @@ def sc_score_one(
         # score the neighborhoods
         si = score(up_gene=gene_set, sample=df_noise, norm_method='standard', full_data=False)  # standard workin gbetter here than theoretical
     else:
-        si = score(up_gene=gene_set, sample=df, norm_method='standard', full_data=False) 
+        si = score(up_gene=gene_set, sample=df, norm_method='standard', full_data=False)
 
     return(si.total_score.mean())
 
@@ -148,23 +157,7 @@ def sc_score_list(
         return( False )
 
     if num_neighbors > 0:
-        # first we get the neighborhood cells
-        cdf = get_conn_dist(adata, celli, num_neighbors)
-        # ZED out the cells that don't have proper annotation.
-        # REDUCE sample size to number cells possible after filter
-        # but give user warning.
-        # then we sample a set of cells from them
-        if len(cdf) == 0:
-            print("warning: cell " + str(celli) + " has " + str(len(cdf)) + " neighbors")
-            print("    returning zed")
-            return (0.0)
-        if len(cdf) < samp_neighbors:
-            print("warning: cell " + str(celli) + " has " + str(len(cdf)) + " neighbors")
-            print("    setting to sample " + str(len(cdf)) + " neighbors")
-            samp_neighbors = len(cdf)
-        csamp = numpy.random.choice(a=cdf['idx'], size=samp_neighbors, replace=False, p=cdf['prob'])
-        # gene counts for scoring needs to have genes on rows.
-        gene_counts = adata.X[csamp, :]
+        gene_counts = _refactor1(adata, celli, num_neighbors, samp_neighbors )
     else:
         # one cell
         gene_counts = adata.X[celli, :]
