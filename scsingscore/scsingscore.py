@@ -1,6 +1,6 @@
 
 import matplotlib
-matplotlib.use("Agg")
+# matplotlib.use("Agg")
 import matplotlib.pyplot
 import numpy
 import pandas
@@ -346,6 +346,7 @@ def normalisation_rank(norm_method, ranks, library_len, sig_len):
         logger.exception('Normalisation method must be standard or theoretical.')
         raise InvalidNormalisation
 
+
 def score(up_gene, sample, down_gene = False, norm_method = 'standard',
           norm_down = 0, full_data= False, centering = True):
     """
@@ -375,7 +376,6 @@ def score(up_gene, sample, down_gene = False, norm_method = 'standard',
     :return: a dataframe of scores with or without dispersion
     """
 
-
     try:
         data = pandas.DataFrame()
 
@@ -384,9 +384,8 @@ def score(up_gene, sample, down_gene = False, norm_method = 'standard',
         # genes
         if type(up_gene) is str:
             up_gene = getsignature(up_gene)
-            if down_gene != False:
+            if down_gene is not False:
                 down_gene = getsignature(down_gene)
-
 
         # check if the data type of signatures and samples are the same, either
         # int for EntrezID or str for Symbol
@@ -396,7 +395,7 @@ def score(up_gene, sample, down_gene = False, norm_method = 'standard',
         # for calculating normalisation
         sig_len_up = len(up_gene)
 
-        if down_gene != False:
+        if down_gene is not False:
             sig_len_down = len(down_gene)
 
         for i in sample.columns:
@@ -418,20 +417,18 @@ def score(up_gene, sample, down_gene = False, norm_method = 'standard',
             score_up = numpy.mean(su)
 
             # normalisation
-            norm_up = normalisation(norm_method= norm_method, library_len=len(
-                sample.index), score_list=su, score = score_up, sig_len=sig_len_up)
+            norm_up = normalisation(norm_method=norm_method, library_len=len(
+                sample.index), score_list=su, score=score_up, sig_len=sig_len_up)
             # if only a single direction signature is provided then the
             # centering will be done to up score, since this is equal to total
             # score
-            if down_gene == False:
+            if down_gene is False:
                 norm_up = norm_up - 0.5
             # find dispersion
             mad_up = statsmodels.robust.scale.mad(su)
 
-
-
             # ==== repeat with down genes,flipping the data frame around
-            if down_gene != False:
+            if down_gene is not False:
                 # this is the standard for scoring, opposite to up
                 down_sort = sample[i].rank(method='min', ascending=False)
 
@@ -446,7 +443,6 @@ def score(up_gene, sample, down_gene = False, norm_method = 'standard',
                     else:
                         sig_len_down = sig_len_down - 1
 
-
                 score_down = numpy.mean(sd)
 
                 # normalisation
@@ -459,24 +455,24 @@ def score(up_gene, sample, down_gene = False, norm_method = 'standard',
 
             total_score = norm_up + norm_down
             # make the score dataframe
-            if full_data == True and down_gene != False: # if all data is
+            if full_data == True and down_gene != False:  # if all data is
                 # wanted and there is a down gene list
                 temp_df = pandas.DataFrame({'up_score': norm_up,
                                         'mad_up':mad_up,'down_score':norm_down,
                                         'mad_down':mad_down,
                                         'total_score': total_score,
                                         'total_mad':mad_down + mad_up},
-                                       index=[i])
+                                        index=[i])
                 temp_df = temp_df[['up_score', 'mad_up', 'down_score',
                                    'mad_down', 'total_score', 'total_mad']]
-            elif full_data == True and down_gene == False: # if all data is
+            elif full_data == True and down_gene == False:  # if all data is
                 # wanted and there is only up gene list
                 temp_df = pandas.DataFrame({'total_score': total_score,
                                             'total_mad': mad_up,
-                                            },index=[i])
-            else: # default, regardless of down gene list, just make total
+                                            }, index=[i])
+            else:  # default, regardless of down gene list, just make total
                 # score
-                temp_df = pandas.DataFrame({'total_score':total_score},
+                temp_df = pandas.DataFrame({'total_score': total_score},
                                            index=[i])
 
             if len(data.columns) == 0:
